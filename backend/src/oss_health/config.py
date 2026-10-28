@@ -17,8 +17,36 @@ from typing import Any
 from oss_health.errors import ConfigError
 from oss_health.redaction import register_secret
 
-BACKEND_DIR = Path(__file__).resolve().parents[2]
-DEFAULT_CONFIG_PATH = BACKEND_DIR / "config" / "pipeline.toml"
+CONFIG_RELATIVE_PATH = Path("config") / "pipeline.toml"
+
+
+def discover_backend_dir(source_file: Path | None = None, cwd: Path | None = None) -> Path:
+    """Locate the project's ``backend/`` directory (config, reports, logs).
+
+    1. ``OSS_HEALTH_HOME`` if set.
+    2. The source tree, when running from a checkout or an editable install.
+    3. The working directory or one of its parents containing ``config/pipeline.toml`` or
+       ``backend/config/pipeline.toml``. A regular ``pip install`` (as in GitHub Actions) lands in
+       ``site-packages``, so the code location alone cannot find the project files.
+    4. Otherwise the working directory.
+    """
+    override = os.environ.get("OSS_HEALTH_HOME", "").strip()
+    if override:
+        return Path(override).resolve()
+    source_tree = Path(source_file or __file__).resolve().parents[2]
+    if (source_tree / CONFIG_RELATIVE_PATH).is_file():
+        return source_tree
+    start = Path(cwd or Path.cwd()).resolve()
+    for candidate in (start, *start.parents):
+        if (candidate / CONFIG_RELATIVE_PATH).is_file():
+            return candidate
+        if (candidate / "backend" / CONFIG_RELATIVE_PATH).is_file():
+            return candidate / "backend"
+    return start
+
+
+BACKEND_DIR = discover_backend_dir()
+DEFAULT_CONFIG_PATH = BACKEND_DIR / CONFIG_RELATIVE_PATH
 
 REPOSITORY_PATTERN = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})/[A-Za-z0-9._-]{1,100}$")
 

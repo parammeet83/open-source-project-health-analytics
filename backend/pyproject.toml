@@ -43,7 +43,13 @@ oss-health = "oss_health.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-oss_health = ["sql/*.sql", "py.typed"]
+# Migrations ship inside the package so `oss-health db upgrade` works after a regular pip install.
+oss_health = [
+    "sql/*.sql",
+    "migrations/env.py",
+    "migrations/script.py.mako",
+    "migrations/versions/*.py",
+]
 
 [tool.ruff]
 line-length = 100
@@ -57,7 +63,7 @@ ignore = ["S101", "S608", "RUF001", "RUF002", "RUF003"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S105", "S106", "S311", "B017", "E501"]
-"migrations/**" = ["E501"]
+"src/oss_health/migrations/**" = ["E501"]
 "src/oss_health/api/queries.py" = ["E501"]  # long SQL text lines
 
 [tool.pytest.ini_options]
@@ -76,6 +82,7 @@ filterwarnings = [
 [tool.coverage.run]
 source = ["oss_health"]
 branch = true
+omit = ["*/oss_health/migrations/*"]  # executed by Alembic; covered by migration tests
 
 [tool.coverage.report]
 show_missing = true

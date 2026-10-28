@@ -7,6 +7,34 @@ root, using only the project `.venv` (Python 3.12.10) and Node 24.19 / npm 11.17
 
 Design documents created (PRD, TRD, schema, data flow, Power BI spec, plan, decisions).
 
+## 2026-10-29 — Fix: `db upgrade` failed in GitHub Actions (`No 'script_location' key found`)
+
+- **Symptom:** the **Migrate and deploy API** run (commit `ced70c2`) failed at "Apply migrations"
+  with `CommandError: No 'script_location' key found in configuration.`
+- **Root cause, reproduced locally** with the same non-editable `pip install ".[pipeline]"` used by
+  the workflow:
+  - `BACKEND_DIR` was derived from the module path, so in `site-packages` it resolved to `…\Lib`.
+    `Config(BACKEND_DIR / "alembic.ini")` therefore read a non-existent file and had no options.
+  - The migrations (`backend/migrations`) were not part of the installed package at all.
+  - The same path problem made `check-config` / `run` fail to find `config/pipeline.toml`, so
+    ingestion would have failed the same way.
+- **Fix:**
+  - Moved the migrations into the package (`oss_health/migrations`, declared as package data).
+  - Added `oss_health.migrate.alembic_config()`, which builds the config in code with an absolute
+    `script_location`. The URL is passed via `Config.attributes`, never as an option.
+  - `env.py` falls back to `MIGRATION_DATABASE_URL`, then `DATABASE_URL_UNPOOLED`, and registers
+    the password for redaction.
+  - `BACKEND_DIR` is now discovered from the source tree, the working directory/parents, or `OSS_HEALTH_HOME`.
+  - Integration fixtures use the same config builder.
+  - CI has a new installed-package smoke step.
+- **Verification:**
+  - In the non-editable venv: `db upgrade` exits 0; a fresh empty database (temporary, dropped
+    afterwards) migrated to `0003_analytics_views` with 8 tables and 8 views; `check-config` exits
+    0; a dry run wrote `backend/reports/`.
+  - 10 new regression tests. Backend 161 passed (93% coverage); frontend 25 passed.
+  - `scripts\verify.ps1` passed, and `git diff --check` was clean.
+  - GitHub secrets were not changed: the failure happened before any database connection was attempted.
+
 ## 2026-10-29 — Neon provisioned and wired
 
 - `npm i -g neon@latest` installed Neon CLI 8.13.1.

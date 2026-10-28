@@ -8,8 +8,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "backend/src/**"
-      - "backend/migrations/**"
+      - "backend/src/**" # includes the packaged migrations (backend/src/oss_health/migrations)
       - "backend/pyproject.toml"
       - "backend/Dockerfile"
       - ".github/workflows/deploy-cloud-run.yml"

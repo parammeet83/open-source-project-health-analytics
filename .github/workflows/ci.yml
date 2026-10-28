@@ -59,6 +59,14 @@ jobs:
           oss-health db upgrade
       - name: Tests (unit + integration) with coverage gate
         run: pytest -q --cov=oss_health --cov-report=term --cov-fail-under=85
+      - name: Installed-package smoke test (same non-editable install as deploy/ingest)
+        env:
+          MIGRATION_DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
+        run: |
+          python -m venv /tmp/installed
+          /tmp/installed/bin/python -m pip install --quiet ".[pipeline]"
+          /tmp/installed/bin/oss-health db upgrade
+          /tmp/installed/bin/oss-health check-config
 
   api-image:
     name: API container builds and serves /health/live

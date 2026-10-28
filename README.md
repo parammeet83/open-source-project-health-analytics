@@ -86,8 +86,8 @@ GitHub or the listed projects.
 backend/            Python package `oss_health` (pipeline + API), Alembic migrations, tests, Dockerfile
   config/pipeline.toml   repositories, history window, retries, thresholds
   src/oss_health/        cli, pipeline (run_pipeline), github/, transform, validation, load,
-                         tracking, report, api/, sql/ (analytics views, grants)
-  migrations/            0001 ops tables · 0002 source tables · 0003 analytics views + grants
+                         tracking, report, api/, sql/ (analytics views, grants), migrate
+  src/oss_health/migrations/  0001 ops tables · 0002 source tables · 0003 views + grants (packaged)
   tests/                 unit/ (no network, no DB) · integration/ (dedicated *_test DB only)
 frontend/           React + TypeScript + Vite dashboard, Vitest tests, vercel.json
 scripts/            setup, local_postgres, run_pipeline, test, verify, deploy_cloud_run (PowerShell)

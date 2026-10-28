@@ -12,7 +12,7 @@ import sys
 from collections.abc import Sequence
 
 from oss_health import __version__
-from oss_health.config import BACKEND_DIR, ROLES_ENV_FILE, load_env_files, load_settings
+from oss_health.config import ROLES_ENV_FILE, load_env_files, load_settings
 from oss_health.errors import ConfigError, OssHealthError
 from oss_health.logging_setup import configure_logging
 from oss_health.redaction import register_secret, safe_error_message
@@ -142,12 +142,9 @@ def _cmd_db(args: argparse.Namespace) -> int:
         load_env_files()
         url = _migration_url()
         if args.db_command == "upgrade":
-            from alembic import command
-            from alembic.config import Config
+            from oss_health.migrate import upgrade
 
-            cfg = Config(str(BACKEND_DIR / "alembic.ini"))
-            cfg.attributes["database_url"] = url
-            command.upgrade(cfg, "head")
+            upgrade(url)
             print("Migrations applied (head).")
             return 0
         if args.db_command == "bootstrap-roles":

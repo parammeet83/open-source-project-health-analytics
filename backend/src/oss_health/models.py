@@ -1,7 +1,7 @@
 """SQLAlchemy Core table definitions used by the loaders.
 
 The authoritative DDL (constraints, partial indexes, generated columns) lives in the Alembic
-migrations under ``backend/migrations``; integration tests verify the two stay in sync.
+migrations under ``oss_health/migrations``; integration tests verify the two stay in sync.
 """
 
 from __future__ import annotations

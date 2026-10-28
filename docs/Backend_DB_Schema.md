@@ -1,7 +1,7 @@
 # Backend Database Schema (PostgreSQL 17 / Neon)
 
 **Status:** Implemented in Alembic migrations `0001`–`0003` (authoritative DDL:
-`backend/migrations/versions/`). Migration round trip verified on a local PostgreSQL. CI uses PostgreSQL 17.
+`backend/src/oss_health/migrations/versions/`, shipped as package data). Migration round trip verified on a local PostgreSQL. CI uses PostgreSQL 17.
 **Related:** [TRD](TRD.md) · [Data Flow](Data_Flow.md) · [Security](SECURITY.md)
 
 ## 1. Schemas and roles

@@ -15,8 +15,8 @@ from alembic.config import Config
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.engine import URL
 
-from oss_health.config import BACKEND_DIR
 from oss_health.db import assert_safe_test_database, normalize_database_url
+from oss_health.migrate import alembic_config as packaged_alembic_config
 
 TEST_URL = os.environ.get("TEST_DATABASE_URL", "").strip()
 OTHER_URL_VARS = (
@@ -24,6 +24,8 @@ OTHER_URL_VARS = (
     "MIGRATION_DATABASE_URL",
     "API_DATABASE_URL",
     "DEV_DATABASE_URL",
+    "DATABASE_URL",
+    "DATABASE_URL_UNPOOLED",
 )
 ROLE_PASSWORDS = {
     "oss_health_app": "test-only-app-password-not-secret",
@@ -52,9 +54,9 @@ def _verified_engine() -> tuple[Engine, URL]:
 
 
 def alembic_config(url: URL) -> Config:
-    cfg = Config(str(BACKEND_DIR / "alembic.ini"))
-    cfg.attributes["database_url"] = url.render_as_string(hide_password=False)
-    return cfg
+    # Same code path as `oss-health db upgrade` (not backend/alembic.ini), so a broken packaged
+    # configuration fails these tests too.
+    return packaged_alembic_config(url.render_as_string(hide_password=False))
 
 
 @pytest.fixture(scope="session")

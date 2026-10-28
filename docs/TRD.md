@@ -41,8 +41,15 @@ flowchart LR
 | `api/` | FastAPI app factory, settings, parameterized queries over `analytics` views |
 | `sql/` | `analytics_views.sql` (8 views), `grants.sql` (idempotent least-privilege grants) |
 
-Migrations: `backend/migrations/versions/0001_schemas_and_ops.py`, `0002_source_tables.py`,
-`0003_analytics_views.py` (views + grants).
+Migrations: `backend/src/oss_health/migrations/versions/0001_schemas_and_ops.py`,
+`0002_source_tables.py`, `0003_analytics_views.py` (views + grants).
+
+- They ship inside the package as package data. `oss_health.migrate.alembic_config()` builds
+  Alembic's `Config` in code with an absolute `script_location`, so `oss-health db upgrade` works
+  after a regular (non-editable) `pip install`, as in GitHub Actions. `backend/alembic.ini` exists
+  only for running the `alembic` command directly.
+- `BACKEND_DIR` (config, reports, logs) is located from the source tree, or else from the working
+  directory or its parents, or from `OSS_HEALTH_HOME`.
 
 ## 3. Configuration
 
