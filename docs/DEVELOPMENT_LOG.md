@@ -77,6 +77,9 @@ Design documents created (PRD, TRD, schema, data flow, Power BI spec, plan, deci
 - No Neon, Google Cloud or Vercel resources were created. See [DEPLOYMENT.md](DEPLOYMENT.md#owner-actions-required).
 
 ### Repository
-- `git init -b main` locally, with `.gitattributes` for line endings. The initial commit was made
-  after a Gitleaks scan and `git diff --check`; results are in the commit summary below. No remote
-  has been added and nothing has been pushed.
+- `git init -b main` locally, with `.gitattributes` for line endings.
+- Before committing, I reviewed the 109 staged files: no `.env`, database data, reports, logs,
+  `node_modules`, `.venv` or build output.
+- **Gitleaks 8.30.1:** no leaks in the exported staged tree, or in the full history after the commit.
+  `git diff --check` against the empty tree was clean.
+- Initial commit `db9c10a`. **No remote has been added and nothing has been pushed.**

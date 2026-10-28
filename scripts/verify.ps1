@@ -15,15 +15,13 @@ try { Assert-Venv; Write-Ok ".venv with Python 3.12" } catch { Fail $_.Exception
 if (Get-Command node -ErrorAction SilentlyContinue) { Write-Ok "Node $(node --version)" } else { Fail "Node.js is not installed" }
 
 Write-Step "Dependencies"
-& $VenvPython -m pip check | Out-Null
-if ($LASTEXITCODE -eq 0) { Write-Ok "pip check: no broken requirements" } else { Fail "pip check reported problems" }
+if ((Invoke-Native { & $VenvPython -m pip check } -Quiet) -eq 0) { Write-Ok "pip check: no broken requirements" } else { Fail "pip check reported problems" }
 if (Test-Path (Join-Path $FrontendDir "node_modules")) { Write-Ok "frontend node_modules present" } else { Fail "frontend dependencies missing (scripts\setup.ps1)" }
 
 Write-Step "Configuration"
 Push-Location $BackendDir
 try {
-    & $OssHealth check-config | Out-Null
-    if ($LASTEXITCODE -eq 0) { Write-Ok "backend/config/pipeline.toml is valid" } else { Fail "pipeline configuration is invalid" }
+    if ((Invoke-Native { & $OssHealth check-config } -Quiet) -eq 0) { Write-Ok "backend/config/pipeline.toml is valid" } else { Fail "pipeline configuration is invalid" }
 } finally { Pop-Location }
 
 Write-Step "Configuration consistency"
@@ -44,7 +42,10 @@ Write-Step "Migration status (read-only)"
 if ($env:MIGRATION_DATABASE_URL) {
     Push-Location $BackendDir
     try {
-        $current = & (Join-Path $ProjectRoot ".venv\Scripts\alembic.exe") current 2>$null
+        $previous = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        try { $current = (& (Join-Path $ProjectRoot ".venv\Scripts\alembic.exe") current 2>&1 | ForEach-Object { "$_" }) -join " " }
+        finally { $ErrorActionPreference = $previous }
         if ($current -match "\(head\)") { Write-Ok "database is at the latest migration" } else { Fail "database is not at head: $current" }
     } finally { Pop-Location }
 } else {
@@ -71,11 +72,11 @@ if (Test-Path $report) {
 Write-Step "Secret scan"
 if (Get-Command gitleaks -ErrorAction SilentlyContinue) {
     if (Test-Path (Join-Path $ProjectRoot ".git")) {
-        gitleaks git --redact --no-banner $ProjectRoot | Out-Null
-        if ($LASTEXITCODE -eq 0) { Write-Ok "gitleaks: no leaks in git history" } else { Fail "gitleaks found potential secrets in git history" }
+        $code = Invoke-Native { gitleaks git --redact --no-banner $ProjectRoot } -Quiet
+        if ($code -eq 0) { Write-Ok "gitleaks: no leaks in git history" } else { Fail "gitleaks found potential secrets in git history" }
     }
-    gitleaks dir --redact --no-banner (Join-Path $ProjectRoot "backend\src") | Out-Null
-    if ($LASTEXITCODE -eq 0) { Write-Ok "gitleaks: backend sources clean" } else { Fail "gitleaks flagged backend sources" }
+    $code = Invoke-Native { gitleaks dir --redact --no-banner (Join-Path $ProjectRoot "backend\src") } -Quiet
+    if ($code -eq 0) { Write-Ok "gitleaks: backend sources clean" } else { Fail "gitleaks flagged backend sources" }
 } else {
     Write-Warn "gitleaks not installed; secret scan skipped"
 }

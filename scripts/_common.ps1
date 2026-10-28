@@ -24,7 +24,20 @@ function Assert-Venv {
     if ($version -ne "3.12") { throw ".venv uses Python $version; Python 3.12 is required." }
 }
 
+# Windows PowerShell 5.1 turns any stderr output of a native tool into a terminating error when
+# $ErrorActionPreference is "Stop". Native commands are therefore judged by exit code only.
+function Invoke-Native([scriptblock]$Block, [switch]$Quiet) {
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        if ($Quiet) { & $Block *>&1 | Out-Null } else { & $Block 2>&1 | ForEach-Object { "$_" } | Out-Host }
+    } finally {
+        $ErrorActionPreference = $previous
+    }
+    return $LASTEXITCODE
+}
+
 function Invoke-Checked([string]$Label, [scriptblock]$Block) {
-    & $Block
-    if ($LASTEXITCODE -ne 0) { throw "$Label failed (exit code $LASTEXITCODE)." }
+    $code = Invoke-Native $Block
+    if ($code -ne 0) { throw "$Label failed (exit code $code)." }
 }
