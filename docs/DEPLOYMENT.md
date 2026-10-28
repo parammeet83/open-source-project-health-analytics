@@ -4,8 +4,8 @@
 
 | Component | Where | URL / identifier |
 |-----------|-------|------------------|
-| Dashboard | Vercel Hobby project `oss-health-dashboard` (Root Directory `frontend`, preset Vite) | https://oss-health-dashboard-one.vercel.app |
-| Read-only API | Vercel Hobby project `oss-health-api` (Root Directory `backend`, preset FastAPI, region `sin1`) | https://oss-health-api.vercel.app |
+| Dashboard | Vercel Hobby project `oss-health-dashboard` (source `frontend/`, preset Vite) | https://oss-health-dashboard-one.vercel.app |
+| Read-only API | Vercel Hobby project `oss-health-api` (source `backend/`, preset FastAPI, region `sin1`) | https://oss-health-api.vercel.app |
 | Database | Neon Free project `open-source-project-health-analytics` (`wandering-leaf-74668817`), branch `production`, Postgres 17, `aws-ap-southeast-1` | — |
 | CI, ingestion, migrations | GitHub Actions in `parammeet83/open-source-project-health-analytics` | `ci.yml`, `ingest.yml`, `migrate.yml` |
 
@@ -71,27 +71,44 @@ Nothing in this setup can incur a charge without an explicit plan upgrade by the
 npx vercel@65.5.0 login                                   # browser device authorization
 npx vercel@65.5.0 project create oss-health-api
 npx vercel@65.5.0 link --yes --project oss-health-api --cwd backend
-npx vercel@65.5.0 api /v9/projects/oss-health-api -X PATCH -f rootDirectory=backend
 # env values are piped on stdin (never typed as arguments):
 #   vercel env add API_DATABASE_URL production --cwd backend --sensitive   < value on stdin
-npx vercel@65.5.0 deploy --prod --yes --cwd backend
+npx vercel@65.5.0 deploy --prod --yes --cwd backend       # uploads backend/ as the project root
 
 npx vercel@65.5.0 project create oss-health-dashboard
 npx vercel@65.5.0 link --yes --project oss-health-dashboard --cwd frontend
-npx vercel@65.5.0 api /v9/projects/oss-health-dashboard -X PATCH -f rootDirectory=frontend -f framework=vite
+npx vercel@65.5.0 api /v9/projects/oss-health-dashboard -X PATCH -f framework=vite
 #   vercel env add VITE_API_BASE_URL production --cwd frontend           < https://oss-health-api.vercel.app
-npx vercel@65.5.0 deploy --prod --yes --cwd frontend
+npx vercel@65.5.0 deploy --prod --yes --cwd frontend      # uploads frontend/ as the project root
 ```
+
+**Current deployment method: CLI from the subdirectory.** The projects' *Root Directory* setting is
+deliberately **unset**. A CLI deploy from `backend/` or `frontend/` already uploads that directory
+as the project root. Setting Root Directory as well makes the CLI look for `backend/backend`, and
+the deploy fails with "The specified Root Directory does not exist".
 
 `vercel link` writes `.vercel/` and a `.env.local` holding a short-lived `VERCEL_OIDC_TOKEN` in
 each project directory. Both are git-ignored and excluded from uploads by `.vercelignore`.
 
 ### Automatic deployments from GitHub
 
-When the Vercel GitHub integration is connected (`vercel git connect`, or the dashboard: Project →
-Settings → Git), every push to `main` builds both projects from their Root Directories, and pull
-requests get preview deployments. Preview deployments are protected by Vercel Authentication (Hobby
-default); production URLs are public.
+**Not connected yet.** `vercel git connect` failed for both projects ("Failed to connect … make
+sure you have access"), because the Vercel GitHub App on the owner's account has not been granted
+access to this repository. Until it is connected, redeploy with the CLI commands above. Data
+refreshes do **not** need a redeploy: ingestion writes to Neon, and the API reads it live.
+
+To enable automatic deploys (owner action, free):
+
+1. GitHub → **Settings → Applications → Installed GitHub Apps → Vercel → Configure** → under
+   *Repository access*, add `open-source-project-health-analytics` → **Save**.
+2. Vercel dashboard → `oss-health-api` → **Settings → Git** → *Connect Git Repository* →
+   `parammeet83/open-source-project-health-analytics`. Then **Settings → Build and Deployment →
+   Root Directory** = `backend` → Save.
+3. Repeat for `oss-health-dashboard` with Root Directory = `frontend`.
+4. From then on, every push to `main` deploys both projects, and pull requests get preview
+   deployments, which Vercel Authentication protects by default on Hobby. For a manual CLI deploy
+   after that, run `vercel deploy --prod` from the **repository root** with the matching project
+   linked, not from the subdirectory.
 
 ## Database migrations (safe procedure)
 

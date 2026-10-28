@@ -58,6 +58,19 @@ Design documents created (PRD, TRD, schema, data flow, Power BI spec, plan, deci
     freshness stayed `fresh`, with no redeploy.
 - **Tests:** backend 196 passed (94% coverage); frontend 25 passed; type check, production build
   and bundle scan clean.
+- **Commit `4f36cfb` pushed:**
+  - CI run 40768420206 green (4 jobs, 196 tests, 94.18% coverage, Vercel entrypoint job OK).
+  - **Migrate database** run 40768420128 green: URL OK, migrations at head (no-op), 6/6 role checks.
+- **GitHub integration:** `vercel git connect` failed for both projects; the Vercel GitHub App
+  lacks access to this repository (owner action documented in DEPLOYMENT.md).
+- **Root Directory:** setting it to `backend` / `frontend` broke CLI deploys from the
+  subdirectories ("Root Directory does not exist"), and `vercel link --repo` needs the Git
+  connection. The setting was therefore unset again (CLI deploys upload the subdirectory as the root).
+- **Production redeployed from commit `4f36cfb`** (clean working tree). Re-verified:
+  - 18 page/viewport loads plus a deep link and an unknown route, all 200, with no console errors
+    or overflow.
+  - API ready on Neon; POST 405; `limit=5000` 422; CORS allows only the dashboard.
+  - The live About page shows the new hosting text.
 
 ## 2026-10-29 — Fix: migration URL "could not be parsed" in GitHub Actions
 
