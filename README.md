@@ -5,9 +5,15 @@ pipeline extracts public GitHub repository, issue and pull-request data, validat
 loads it idempotently into PostgreSQL, and records every run and its data-quality checks. A public,
 read-only FastAPI service and a responsive React dashboard present the results.
 
-**Live dashboard:** https://oss-health-dashboard-one.vercel.app
-**Public read-only API:** https://oss-health-api.vercel.app (interactive docs at
-[`/docs`](https://oss-health-api.vercel.app/docs))
+## Live Dashboard
+
+**[Open Live Dashboard](https://oss-health-dashboard-one.vercel.app)** · https://oss-health-dashboard-one.vercel.app
+
+**[Live API](https://oss-health-api.vercel.app)** (read-only) · https://oss-health-api.vercel.app ·
+interactive docs at [`/docs`](https://oss-health-api.vercel.app/docs)
+
+The dashboard is publicly accessible over HTTPS in any modern browser. You don't need to clone,
+install or run this project locally to view it.
 
 Both run on Vercel (Hobby) and read from Neon PostgreSQL (Free). Data is refreshed by GitHub
 Actions, so nothing depends on a personal computer being on. Verification results, including phone,
