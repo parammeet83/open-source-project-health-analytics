@@ -1,0 +1,50 @@
+# Secrets and local configuration — never commit
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+*.pem
+*.key
+*service-account*.json
+*credentials*.json
+gha-creds-*.json
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Local PostgreSQL data (pgserver) and generated artifacts
+.pgdata/
+backend/reports/
+backend/logs/
+reports/
+logs/
+data/
+
+# Node / frontend
+node_modules/
+frontend/dist/
+frontend/.vercel/
+.vercel/
+*.tsbuildinfo
+
+# Power BI working files (no .pbix is committed)
+*.pbix
+*.pbit
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

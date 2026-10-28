@@ -1,0 +1,95 @@
+name: Ingest GitHub data
+
+# Daily cloud ingestion into Neon. Runs the same `oss-health run` CLI (and therefore the same
+# run_pipeline() function) as local development. No laptop involvement.
+on:
+  schedule:
+    - cron: "17 2 * * *" # 02:17 UTC daily (deliberately not on the hour)
+  workflow_dispatch:
+    inputs:
+      repositories:
+        description: "Optional space-separated owner/name list (default: all configured)"
+        required: false
+        default: ""
+      full_refresh:
+        description: "Re-backfill the history window and all open items"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# Never run two ingestions at once (the pipeline also holds a PostgreSQL advisory lock).
+concurrency:
+  group: ingest-production
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment: production
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+      - name: Install pipeline
+        run: python -m pip install ".[pipeline]"
+      - name: Run pipeline
+        id: run
+        env:
+          # Writer role only (oss_health_app). Never the reader or the migration owner.
+          PIPELINE_DATABASE_URL: ${{ secrets.PIPELINE_DATABASE_URL }}
+          # Optional personal token; otherwise the job's built-in read-only token is used.
+          GITHUB_TOKEN: ${{ secrets.GH_API_TOKEN || github.token }}
+          TRIGGER: ${{ github.event_name == 'schedule' && 'scheduled' || 'manual' }}
+          INPUT_REPOSITORIES: ${{ inputs.repositories }}
+          INPUT_FULL_REFRESH: ${{ inputs.full_refresh }}
+        run: |
+          set +e
+          args=(run --trigger "$TRIGGER")
+          for repo in $INPUT_REPOSITORIES; do
+            if [[ ! "$repo" =~ ^[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9._-]{1,100}$ ]]; then
+              echo "::error::Invalid repository input"; exit 3
+            fi
+            args+=(--repo "$repo")
+          done
+          if [ "$INPUT_FULL_REFRESH" = "true" ]; then args+=(--full-refresh); fi
+          oss-health "${args[@]}"
+          code=$?
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit $code
+      - name: Summarize quality report
+        if: always()
+        run: |
+          if [ -f reports/latest_quality_report.json ]; then
+            python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          r = json.load(open("reports/latest_quality_report.json"))
+          print(f"### Ingestion run `{r.get('run_id')}`: **{r['status']}** (exit {r['exit_code']})")
+          print(f"Totals: {r.get('totals')}  \nAPI requests: {r.get('api', {}).get('requests_made')}")
+          print("| Repository | Status | Error |\n|---|---|---|")
+          for repo in r.get("repositories", []):
+              print(f"| {repo['full_name']} | {repo['status']} | {repo.get('error_type') or ''} |")
+          failed = r.get("failed_checks", [])
+          print(f"\nFailed checks: {len(failed)}")
+          for c in failed[:20]:
+              print(f"- {c['severity']}: {c['check_name']} ({c['entity']}, {c.get('repository_full_name') or 'run'})")
+          PY
+          else
+            echo "No quality report was produced." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Keep the quality report (short-term copy; Neon is the system of record)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-report-${{ github.run_id }}
+          path: backend/reports/*.json
+          retention-days: 30
+          if-no-files-found: warn

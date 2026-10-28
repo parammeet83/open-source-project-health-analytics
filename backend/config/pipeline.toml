@@ -1,0 +1,51 @@
+# Open-Source Project Health Analytics — pipeline configuration.
+# Secrets (GITHUB_TOKEN, PIPELINE_DATABASE_URL) never belong in this file; see .env.example.
+
+[pipeline]
+# microsoft/vscode was added after the bounded extraction strategy was verified on the
+# four smaller repositories (see docs/DEVELOPMENT_LOG.md).
+repositories = [
+  "pandas-dev/pandas",
+  "scikit-learn/scikit-learn",
+  "fastapi/fastapi",
+  "psf/requests",
+  "microsoft/vscode",
+]
+
+[github]
+api_base_url = "https://api.github.com"
+api_version = "2022-11-28"
+user_agent = "oss-health-analytics-pipeline"
+require_token = false                # a token is recommended for live runs, never for tests
+per_page = 100
+connect_timeout_seconds = 10
+read_timeout_seconds = 30
+max_retries = 3                      # retries after the first attempt (max 4 attempts)
+backoff_base_seconds = 2
+backoff_max_seconds = 60
+secondary_limit_min_wait_seconds = 60
+max_rate_limit_wait_seconds = 900    # longer waits fail the remaining repositories instead
+rate_limit_buffer = 25               # pause for the reset when fewer requests remain
+max_pages_per_series = 300           # safety cap per paginated series (30,000 items)
+
+[extraction]
+history_days = 90                    # initial backfill window, by updated_at
+incremental_overlap_hours = 24       # re-read this much before the watermark
+backfill_open_items = true           # also fetch ALL open issues/PRs on backfill
+
+[validation]
+max_rejection_rate = 0.05            # per entity per repository; above = error-severity check
+freshness_warning_hours = 168        # warn when the newest issue/PR update is older than this
+last_success_warning_hours = 48      # warn when the previous successful run is older than this
+
+[database]
+batch_size = 500
+stale_run_after_hours = 6
+rejected_records_retention_days = 90
+statement_timeout_ms = 120000
+
+[output]
+reports_dir = "reports"
+logs_dir = "logs"
+log_level = "INFO"
+write_log_file = true
