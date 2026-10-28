@@ -56,6 +56,23 @@ gh api -X PUT repos/{owner}/open-source-project-health-analytics/environments/pr
 
 ### 2. Neon
 
+> **Done on 2026-10-29 with the Neon CLI.**
+> - Project `open-source-project-health-analytics` (`wandering-leaf-74668817`), branch `production`,
+>   Postgres 17.11, `aws-ap-southeast-1`.
+> - Ran `neon init … --services postgres` and `neon deploy`. These created `neon.ts` and the root
+>   `package.json`, and wrote `DATABASE_URL` (pooled), `DATABASE_URL_UNPOOLED` (direct) and
+>   `NEON_BRANCH` to the git-ignored `.env.local`.
+> - `oss-health db upgrade` used `DATABASE_URL_UNPOOLED` automatically as the migration credential.
+> - `oss-health db bootstrap-roles --write-env` created `oss_health_app` and `oss_health_reader`
+>   with generated passwords, and wrote `PIPELINE_DATABASE_URL` / `API_DATABASE_URL` (direct
+>   endpoint) to the git-ignored `.env.roles`. All six privilege checks passed.
+> - The pipeline and the API use the **direct** endpoint. The pipeline holds a session-level
+>   advisory lock, and both set session startup options (`timezone`, `statement_timeout`,
+>   read-only), which PgBouncer transaction mode does not support. Both are long-running processes
+>   with small client-side pools.
+>
+> The manual steps below remain for reference.
+
 1. Create a Neon account and a **new** project named `open-source-project-health-analytics`. Use
    Postgres 17, region **AWS Asia Pacific (Singapore)**, and database `oss_health`. Do not reuse any
    other project.
@@ -186,8 +203,10 @@ These are the exact actions that need you. Everything else is ready.
 1. **GitHub:** install the GitHub CLI and run `gh auth login`, or create the empty public repository
    `open-source-project-health-analytics` yourself and authorise `git push`. Confirm the GitHub
    username that should own the repository.
-2. **Neon:** create the dedicated Neon project (Free plan, Singapore). Put the owner connection
-   string and two generated role passwords into your local `.env` (steps 2.2–2.3). Do not share them in chat.
+2. ~~**Neon:** create the dedicated Neon project.~~ **Done 2026-10-29** (see §2). For GitHub
+   Actions, copy `PIPELINE_DATABASE_URL` (from `.env.roles`) and `MIGRATION_DATABASE_URL` (=
+   `DATABASE_URL_UNPOOLED` from `.env.local`) into the `production` environment secrets once the
+   repository exists.
 3. **Google Cloud — approval needed:** approve creating a **new dedicated project linked to a billing
    account**, then install the Google Cloud CLI and run `gcloud auth login`. Usage is expected to stay
    within the Always Free allowances, but billing is required, and small charges are possible

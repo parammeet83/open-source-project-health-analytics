@@ -110,6 +110,23 @@ class Settings:
         }
 
 
+# Git-ignored local env files, loaded in this order; real environment variables always win.
+#   .env         – hand-maintained local settings
+#   .env.local   – written by `neon env pull` / `neon deploy` (DATABASE_URL, DATABASE_URL_UNPOOLED)
+#   .env.roles   – written by `oss-health db bootstrap-roles --write-env` (runtime role URLs)
+ENV_FILES = (".env", ".env.local", ".env.roles")
+ROLES_ENV_FILE = BACKEND_DIR.parent / ".env.roles"
+
+
+def load_env_files() -> None:
+    try:
+        from dotenv import load_dotenv
+    except ImportError:  # pragma: no cover - python-dotenv is a pipeline dependency
+        return
+    for name in ENV_FILES:
+        load_dotenv(BACKEND_DIR.parent / name, override=False)
+
+
 def _validate_repositories(values: list[Any]) -> tuple[str, ...]:
     if not values:
         raise ConfigError("pipeline.repositories must list at least one 'owner/name'")
@@ -183,12 +200,7 @@ def load_settings(
     """Load and validate settings. Raises ConfigError on any problem."""
     if env is None:
         if use_dotenv:
-            try:
-                from dotenv import load_dotenv
-
-                load_dotenv(BACKEND_DIR.parent / ".env", override=False)
-            except ImportError:  # pragma: no cover - python-dotenv is a pipeline dependency
-                pass
+            load_env_files()
         env = os.environ
 
     path = Path(config_path or env.get("OSS_HEALTH_CONFIG") or DEFAULT_CONFIG_PATH)

@@ -48,3 +48,4 @@ frontend/.vercel/
 Thumbs.db
 .vscode/
 .idea/
+.neon

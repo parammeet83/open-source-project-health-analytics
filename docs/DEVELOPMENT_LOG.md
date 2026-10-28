@@ -7,6 +7,44 @@ root, using only the project `.venv` (Python 3.12.10) and Node 24.19 / npm 11.17
 
 Design documents created (PRD, TRD, schema, data flow, Power BI spec, plan, decisions).
 
+## 2026-10-29 — Neon provisioned and wired
+
+- `npm i -g neon@latest` installed Neon CLI 8.13.1.
+- Ran `neon init -y --org-id org-misty-rain-69863140 --project-id wandering-leaf-74668817 --branch production --services postgres`.
+  It created `neon.ts` and a root `package.json`/`package-lock.json`, and added `.neon` to `.gitignore`.
+- `neon deploy` completed browser sign-in, reported the `production` branch already matched, and
+  pulled `DATABASE_URL`, `DATABASE_URL_UNPOOLED` and `NEON_BRANCH` into `.env.local`.
+- Pre-checks on the project: Postgres 17.11, `aws-ap-southeast-1`; it contained only the `public`
+  schema and no user tables, so nothing existing was touched.
+- **Code changes:**
+  - Env loading now reads `.env`, `.env.local` and `.env.roles`.
+  - The migration credential falls back to Neon's `DATABASE_URL_UNPOOLED`.
+  - Added `db bootstrap-roles --write-env`.
+  - The API's local entry point loads the env files.
+  - Integer sums now serialize as integers.
+  - `run_pipeline.ps1` now tolerates native stderr.
+  - The root `package.json` has `build`/`test` scripts.
+  - Tests are isolated from the real env files (autouse fixture).
+- **Results on Neon:**
+  - `db upgrade` → "Migrations applied (head)".
+  - `db bootstrap-roles --write-env` → both roles created, 6/6 privilege checks ok.
+  - Pipeline as `oss_health_app` (`--repo psf/requests --repo fastapi/fastapi`, unauthenticated) →
+    `success`, 814 rows inserted (psf/requests 188 issues + 158 PRs; fastapi 19 issues + 445 PRs).
+  - Immediate rerun → `success`, incremental, 15 extracted, 0 inserted, 0 updated.
+  - No duplicate snapshots; the issue/PR overlap check passed.
+- **API against Neon** (Uvicorn, `oss_health_reader`):
+  - `/health/ready` → `{"status":"ok","database":"ok"}`.
+  - All data endpoints returned 200 with real data (2 repositories, 158,834 stars, merge rate 52.5%,
+    freshness `fresh`).
+  - POST → 405; `limit=5000` → 422; CORS allowed the dashboard origin.
+- **Dashboard** (Vite dev → local API → Neon), with headless Chromium:
+  - Overview KPIs rendered from Neon data; repository detail and quality pages loaded.
+  - API calls went only to the API host, and there were 0 console errors.
+- `npm run build` (root) exited 0. `scripts\test.ps1`: 151 backend tests passed (93% coverage),
+  25 frontend tests passed, and the bundle scan was clean.
+- **Not yet done:** GitHub repository, Cloud Run and Vercel deployment. `microsoft/vscode` and the
+  remaining repositories await a token-backed cloud ingestion.
+
 ## 2026-10-28 — Implementation and local verification
 
 ### Reconciliation

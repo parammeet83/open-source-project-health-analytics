@@ -14,8 +14,8 @@ if (-not (Test-Path $OssHealth)) { throw "oss-health CLI not found in .venv; run
 
 Push-Location $BackendDir
 try {
-    & $OssHealth run @args
-    $code = $LASTEXITCODE
+    $pipelineArgs = $args
+    $code = Invoke-Native { & $OssHealth run @pipelineArgs }
 } finally {
     Pop-Location
 }

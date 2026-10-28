@@ -51,6 +51,24 @@ def settings(tmp_path: Path) -> Settings:
 
 
 @pytest.fixture(autouse=True)
+def _isolate_from_real_env_files(tmp_path, monkeypatch):
+    """Tests must never read the project's .env/.env.local/.env.roles (real Neon credentials)."""
+    monkeypatch.setattr("oss_health.config.BACKEND_DIR", tmp_path / "backend")
+    for name in (
+        "DATABASE_URL",
+        "DATABASE_URL_UNPOOLED",
+        "NEON_BRANCH",
+        "PIPELINE_DATABASE_URL",
+        "API_DATABASE_URL",
+        "MIGRATION_DATABASE_URL",
+        "OSS_HEALTH_APP_PASSWORD",
+        "OSS_HEALTH_READER_PASSWORD",
+        "GITHUB_TOKEN",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _reset_secrets():
     clear_registered_secrets()
     yield

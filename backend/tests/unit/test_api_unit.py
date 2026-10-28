@@ -117,6 +117,16 @@ def test_unexpected_error_is_generic():
     assert "postgresql" not in r.text
 
 
+def test_numeric_sums_serialize_as_integers():
+    from decimal import Decimal
+
+    from oss_health.api.queries import _clean
+
+    assert _clean(Decimal("158")) == 158 and isinstance(_clean(Decimal("158")), int)
+    assert _clean(Decimal("0.524675")) == pytest.approx(0.524675)
+    assert _clean(None) is None
+
+
 def test_rate_limiter_window():
     limiter = RateLimiter(per_minute=3)
     assert [limiter.allow("1.2.3.4", now=60.0) for _ in range(4)] == [True, True, True, False]

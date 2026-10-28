@@ -32,7 +32,8 @@ _REPOSITORY_COLUMNS = """
 
 def _clean(value: Any) -> Any:
     if isinstance(value, Decimal):
-        return float(value)
+        # sum() of integer columns returns NUMERIC; keep counts as JSON integers.
+        return int(value) if value == value.to_integral_value() else float(value)
     return value
 
 
