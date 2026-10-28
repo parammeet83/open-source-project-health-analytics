@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 
 from sqlalchemy import Engine, create_engine, text
@@ -31,10 +32,44 @@ def _with_driver(url: str) -> str:
     return url
 
 
+SUPPORTED_SCHEMES = ("postgresql://", "postgres://", "postgresql+psycopg://")
+_KEY_PREFIX = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*\s*=")
+
+
+def diagnose_database_url(value: str | None) -> dict[str, bool]:
+    """Secret-safe structural checks of a connection string. Returns booleans only.
+
+    Used by ``oss-health db check-url`` to explain a rejected secret without ever printing it.
+    """
+    raw = value or ""
+    stripped = raw.strip()
+    report = {
+        "present": bool(stripped),
+        "surrounding_whitespace": raw != stripped,
+        "internal_whitespace": any(ch.isspace() for ch in stripped),
+        "surrounding_quotes": len(stripped) >= 2
+        and stripped[0] == stripped[-1]
+        and stripped[0] in "'\"",
+        "key_prefix": bool(_KEY_PREFIX.match(stripped)),
+        "expected_scheme": stripped.startswith(SUPPORTED_SCHEMES),
+        "parser_accepts": False,
+    }
+    if report["present"]:
+        try:
+            normalize_database_url(raw)
+            report["parser_accepts"] = True
+        except ConfigError:
+            pass
+    return report
+
+
 def normalize_database_url(url: str, *, require_tls_for_remote: bool = True) -> URL:
     """Return a psycopg URL. Remote hosts must use TLS (sslmode=require or stronger)."""
-    if not url:
+    if not url or not url.strip():
         raise ConfigError("Database URL is empty")
+    if any(ch.isspace() for ch in url.strip()):
+        # Never valid in a connection URL; usually a pasted `psql '...'` command or two values.
+        raise ConfigError("Database URL contains whitespace")
     try:
         parsed = make_url(_with_driver(url))
     except Exception as exc:

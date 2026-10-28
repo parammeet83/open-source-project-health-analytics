@@ -7,6 +7,27 @@ root, using only the project `.venv` (Python 3.12.10) and Node 24.19 / npm 11.17
 
 Design documents created (PRD, TRD, schema, data flow, Power BI spec, plan, decisions).
 
+## 2026-10-29 — Fix: migration URL "could not be parsed" in GitHub Actions
+
+- After `b6c19d1`, the migrate job reached URL parsing and failed with exit 3
+  (`Database URL could not be parsed`), before any connection attempt.
+- **Workflow mapping:** verified correct (`MIGRATION_DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}`).
+  The secret is repository-level; the `production` environment has no secrets of its own.
+- **Local check:** `oss-health db check-url --env DATABASE_URL_UNPOOLED` on `.env.local` → all
+  checks OK. The application parser rejects the quoted, `psql '...'` and `KEY=` forms with exactly
+  the observed message, so the stored secret did not hold a bare URL.
+- **Added:**
+  - `oss-health db check-url`, which prints only the variable name and yes/no flags: present,
+    whitespace, quotes, `KEY=` prefix, scheme, parser acceptance.
+  - A validation step before migrations (deploy) and before ingestion (pipeline URL).
+  - `normalize_database_url` now rejects internal whitespace (stricter).
+  - `db upgrade` validates the URL before invoking Alembic.
+  - 31 regression tests.
+- **Secret:** `MIGRATION_DATABASE_URL` was re-set from `.env.local` `DATABASE_URL_UNPOOLED` via
+  `gh secret set` with stdin (exit 0; value never displayed). No Neon data or passwords were changed.
+- **Tests:** backend 192 passed (93.94% coverage). `git diff --check` and Gitleaks clean. One
+  synthetic test password is annotated `gitleaks:allow`.
+
 ## 2026-10-29 — Fix: `db upgrade` failed in GitHub Actions (`No 'script_location' key found`)
 
 - **Symptom:** the **Migrate and deploy API** run (commit `ced70c2`) failed at "Apply migrations"

@@ -41,6 +41,10 @@ jobs:
           cache-dependency-path: backend/pyproject.toml
       - name: Install pipeline
         run: python -m pip install ".[pipeline]"
+      - name: Validate pipeline URL (secret-safe; prints yes/no flags only)
+        env:
+          PIPELINE_DATABASE_URL: ${{ secrets.PIPELINE_DATABASE_URL }}
+        run: oss-health db check-url --env PIPELINE_DATABASE_URL
       - name: Run pipeline
         id: run
         env:

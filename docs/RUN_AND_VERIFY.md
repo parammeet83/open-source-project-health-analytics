@@ -102,6 +102,7 @@ Run after each production deploy, then record the results in `docs/DEVELOPMENT_L
 | Problem | Fix |
 |---------|-----|
 | `invalid value for parameter "TimeZone": "UTC"` with the local pgserver | Re-run `scripts\local_postgres.ps1`; it installs the missing time-zone files into the pgserver package |
+| `Database URL could not be parsed` / `contains whitespace` | Run `oss-health db check-url --env <VARIABLE>`. It prints only yes/no flags (quotes, `KEY=` prefix, whitespace, scheme). Store the bare `postgresql://…` URL. |
 | Integration tests skipped | `TEST_DATABASE_URL` is not set; the tests intentionally skip |
 | `UnsafeDatabaseTargetError` | The test URL is not a local `*_test` database, or equals another configured URL. This is intended. |
 | `exit 3` lock message | A run is in progress, or a crashed session still holds the lock; it clears when that session ends |

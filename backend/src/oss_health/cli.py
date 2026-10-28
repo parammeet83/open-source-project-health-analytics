@@ -19,6 +19,12 @@ from oss_health.redaction import register_secret, safe_error_message
 
 logger = logging.getLogger("oss_health.cli")
 
+URL_VARIABLES = (
+    "MIGRATION_DATABASE_URL",
+    "PIPELINE_DATABASE_URL",
+    "API_DATABASE_URL",
+    "DATABASE_URL_UNPOOLED",
+)
 APP_ROLE = "oss_health_app"
 READER_ROLE = "oss_health_reader"
 
@@ -76,6 +82,16 @@ def _parser() -> argparse.ArgumentParser:
         "to the git-ignored .env.roles (values are never printed)",
     )
     db_sub.add_parser("verify-roles", help="Report the privileges of the runtime roles")
+    check = db_sub.add_parser(
+        "check-url",
+        help="Secret-safe validation of a database URL variable (prints yes/no flags only)",
+    )
+    check.add_argument(
+        "--env",
+        dest="env_name",
+        choices=URL_VARIABLES,
+        help="Variable to check (default: the URL `db upgrade` would use)",
+    )
     return parser
 
 
@@ -121,18 +137,28 @@ def _cmd_check_config(args: argparse.Namespace) -> int:
     return 0
 
 
+def _migration_url_source() -> tuple[str, str]:
+    """(variable name, value) for the migration credential, in documented precedence.
+
+    Neon's `neon env pull` provides DATABASE_URL_UNPOOLED: the project owner on the direct
+    (non-pooled) endpoint, which is what Alembic and role management require.
+    """
+    for name in ("MIGRATION_DATABASE_URL", "DATABASE_URL_UNPOOLED"):
+        value = os.environ.get(name, "")
+        if value.strip():
+            return name, value
+    return "MIGRATION_DATABASE_URL", ""
+
+
 def _migration_url() -> str:
-    # Neon's `neon env pull` provides DATABASE_URL_UNPOOLED: the project owner on the direct
-    # (non-pooled) endpoint, which is what Alembic and role management require.
-    url = (
-        os.environ.get("MIGRATION_DATABASE_URL", "").strip()
-        or os.environ.get("DATABASE_URL_UNPOOLED", "").strip()
-    )
+    url = _migration_url_source()[1].strip()
     if not url:
         raise ConfigError("MIGRATION_DATABASE_URL (or Neon's DATABASE_URL_UNPOOLED) is not set")
-    from oss_health.db import password_from_url
+    from oss_health.db import normalize_database_url, password_from_url
 
     register_secret(password_from_url(url))
+    # Fail fast, before Alembic or any connection: run `oss-health db check-url` for a diagnosis.
+    normalize_database_url(url)
     return url
 
 
@@ -140,6 +166,8 @@ def _cmd_db(args: argparse.Namespace) -> int:
     configure_logging(args.log_level or "INFO")
     try:
         load_env_files()
+        if args.db_command == "check-url":
+            return _check_url(args.env_name)
         url = _migration_url()
         if args.db_command == "upgrade":
             from oss_health.migrate import upgrade
@@ -158,6 +186,55 @@ def _cmd_db(args: argparse.Namespace) -> int:
         logger.error("Database command failed: %s: %s", type(exc).__name__, safe_error_message(exc))
         return 1
     return 1
+
+
+CHECK_LABELS = {
+    "present": "value present",
+    "surrounding_whitespace": "leading/trailing whitespace",
+    "internal_whitespace": "whitespace inside the value",
+    "surrounding_quotes": "wrapped in quotes",
+    "key_prefix": "accidental KEY= prefix",
+    "expected_scheme": "postgresql:// or postgres:// scheme",
+    "parser_accepts": "accepted by the application's URL parser",
+}
+
+
+def _check_url(env_name: str | None) -> int:
+    """Print only the variable name and boolean findings. Never the value or parser input."""
+    from oss_health.db import diagnose_database_url
+
+    if env_name:
+        name, value = env_name, os.environ.get(env_name, "")
+    else:
+        name, value = _migration_url_source()
+    report = diagnose_database_url(value)
+    print(f"Checking {name} (value not shown)")
+    for key, label in CHECK_LABELS.items():
+        print(f"  {label}: {'yes' if report[key] else 'no'}")
+    ok = (
+        report["present"]
+        and report["parser_accepts"]
+        and report["expected_scheme"]
+        and not report["surrounding_quotes"]
+        and not report["key_prefix"]
+        and not report["internal_whitespace"]
+    )
+    if ok:
+        print(f"{name}: OK")
+        return 0
+    hints = []
+    if not report["present"]:
+        hints.append("the variable is empty or not set")
+    if report["surrounding_quotes"]:
+        hints.append("remove the surrounding quotes")
+    if report["key_prefix"]:
+        hints.append("store only the URL, without a NAME= prefix")
+    if report["internal_whitespace"]:
+        hints.append("remove spaces/newlines (a pasted `psql '...'` command is not a URL)")
+    if report["present"] and not report["expected_scheme"]:
+        hints.append("the value must start with postgresql:// (or postgres://)")
+    print(f"{name}: INVALID - " + "; ".join(hints or ["the URL parser rejected the value"]))
+    return 3
 
 
 def role_url(owner_url: str, role: str, password: str) -> str:
