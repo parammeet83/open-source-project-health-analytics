@@ -16,7 +16,8 @@ class ApiSettings:
     cors_allow_origin_regex: str | None = None
     rate_limit_per_minute: int = 120
     stale_after_hours: int = 36
-    # 3 Cloud Run instances x (2 + 1) = 9 connections, within the reader role's limit of 10.
+    # Small per-instance pool; production on Vercel sets DB_POOL_SIZE=1 / DB_MAX_OVERFLOW=1 so
+    # several concurrent function instances stay within the reader role's limit of 10.
     db_pool_size: int = 2
     db_max_overflow: int = 1
     statement_timeout_ms: int = 5000

@@ -43,7 +43,7 @@ if (-not $SkipFrontend) {
         Invoke-Checked "typecheck" { npm run --silent typecheck }
         Invoke-Checked "vitest" { npm test --silent }
         $previous = $env:VITE_API_BASE_URL
-        $env:VITE_API_BASE_URL = "https://local-check.example.run.app"
+        $env:VITE_API_BASE_URL = "https://local-check.example.vercel.app"
         try {
             Invoke-Checked "build" { npm run --silent build }
             Invoke-Checked "bundle scan" { npm run --silent check:dist }

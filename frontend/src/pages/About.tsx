@@ -48,7 +48,7 @@ export default function About() {
         </Card>
         <Card title="Technology">
           <p>
-            Python 3.12 · requests · pandas · Pandera · SQLAlchemy · Alembic · PostgreSQL (Neon) · FastAPI on Google Cloud Run ·
+            Python 3.12 · requests · pandas · Pandera · SQLAlchemy · Alembic · PostgreSQL (Neon) · FastAPI as a Vercel Function ·
             React, TypeScript, Vite and Recharts on Vercel · GitHub Actions for CI and scheduled ingestion.
           </p>
           <p>Source code is published under the MIT License.</p>

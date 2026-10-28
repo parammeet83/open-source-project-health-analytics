@@ -1,4 +1,4 @@
-"""Public, read-only FastAPI analytics API (deployed to Google Cloud Run).
+"""Public, read-only FastAPI analytics API (deployed as a Vercel Function via backend/index.py).
 
 * Only GET/HEAD/OPTIONS routes exist; there is no endpoint that runs the pipeline, executes SQL,
   changes watermarks, runs migrations or mutates data.
@@ -43,7 +43,7 @@ class RateLimiter:
     """Fixed-window per-client limiter held in memory.
 
     This is best-effort abuse protection for a single instance only; it is NOT a reliable global
-    limit across multiple Cloud Run instances (see docs/SECURITY.md).
+    limit across multiple serverless function instances (see docs/SECURITY.md).
     """
 
     def __init__(self, per_minute: int, max_clients: int = 10_000) -> None:
@@ -69,8 +69,12 @@ class RateLimiter:
 
 
 def _client_key(request: Request) -> str:
-    # Cloud Run's front end appends the connecting client address as the final X-Forwarded-For
-    # entry; earlier entries are client-controlled and therefore ignored.
+    # Vercel sets x-vercel-forwarded-for to the connecting client's IP (it is not client
+    # controlled). Otherwise use the last X-Forwarded-For entry, which the nearest proxy appends;
+    # earlier entries are client-controlled and therefore ignored.
+    vercel = request.headers.get("x-vercel-forwarded-for", "")
+    if vercel:
+        return vercel.split(",")[0].strip()[:64]
     forwarded = request.headers.get("x-forwarded-for", "")
     if forwarded:
         return forwarded.split(",")[-1].strip()[:64]

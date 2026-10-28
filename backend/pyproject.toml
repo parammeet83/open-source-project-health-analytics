@@ -9,9 +9,13 @@ description = "Open-Source Project Health Analytics: GitHub data pipeline and re
 requires-python = ">=3.12,<3.13"
 license = { text = "MIT" }
 authors = [{ name = "parammeet83" }]
+# Core dependencies are exactly what the read-only API needs at runtime. Vercel installs these
+# from pyproject.toml for the serverless function (backend/index.py); optional extras are not
+# installed there.
 dependencies = [
     "sqlalchemy>=2.0.30,<2.1",
     "psycopg[binary]>=3.2,<3.4",
+    "fastapi>=0.115,<1",
 ]
 
 [project.optional-dependencies]
@@ -23,8 +27,8 @@ pipeline = [
     "alembic>=1.13,<2",
     "python-dotenv>=1.0,<2",
 ]
+# Local API server only (Vercel runs the ASGI app itself).
 api = [
-    "fastapi>=0.115,<1",
     "uvicorn[standard]>=0.30,<1",
 ]
 dev = [

@@ -22,14 +22,15 @@ Format: context → decision → alternatives → consequences. Superseded decis
 | ADR-016 | Power BI Import mode on the analytics schema | Accepted (now optional; see ADR-019) |
 | ADR-017 | UTC everywhere | Accepted |
 | ADR-018 | Tooling additions (python-dotenv, responses, ruff) | Accepted |
-| ADR-019 | Hosted architecture: Vercel + Cloud Run + Neon + GitHub Actions | Accepted |
+| ADR-019 | Hosted architecture: Vercel + Cloud Run + Neon + GitHub Actions | Accepted; API host amended by ADR-027 |
 | ADR-020 | Cloud ingestion with GitHub Actions | Accepted |
-| ADR-021 | Container only for the API on Cloud Run | Accepted |
+| ADR-021 | Container only for the API on Cloud Run | **Superseded by ADR-027** |
 | ADR-022 | Three database credentials with SQL-created runtime roles | Accepted |
-| ADR-023 | GitHub OIDC → Workload Identity Federation; no service-account keys | Accepted |
-| ADR-024 | Singapore region pairing | Accepted (pending owner approval of GCP billing) |
+| ADR-023 | GitHub OIDC → Workload Identity Federation; no service-account keys | **Superseded by ADR-027** (no Google Cloud) |
+| ADR-024 | Singapore region pairing | Accepted (Vercel `sin1` + Neon `aws-ap-southeast-1`) |
 | ADR-025 | Honest-status UI: missing ≠ zero; partial ≠ healthy | Accepted |
 | ADR-026 | Local integration database via pgserver | Accepted |
+| ADR-027 | Host the API on Vercel instead of Google Cloud Run | Accepted |
 
 ## ADR-001: Single orchestration function `run_pipeline()`
 
@@ -200,3 +201,31 @@ PostgreSQL was not installed on the development machine, and Docker was unavaila
 Its Windows build lacks time-zone files; `scripts/local_postgres.ps1` copies them from the `tzdata`
 package. CI uses a real PostgreSQL 17 service container, so version-specific behaviour is still
 covered there.
+
+## ADR-027: Host the API on Vercel instead of Google Cloud Run
+
+**Context.** Google Cloud Run requires a billing-enabled project even within the Always Free tier.
+The owner did not approve any charges or billing setup. Vercel's Python runtime now supports
+FastAPI natively, and the Hobby plan pauses rather than bills when its limits are reached.
+
+**Decision.**
+- Deploy the read-only API as a separate Vercel Hobby project (`oss-health-api`, Root Directory
+  `backend`). Its entrypoint is `backend/index.py`, which re-exports `oss_health.api.app:app`.
+- FastAPI moves into the core `[project.dependencies]`, because Vercel installs only those.
+- The function region is `sin1`, next to Neon Singapore.
+- `API_DATABASE_URL` (reader role) is a sensitive Vercel environment variable.
+- The dashboard stays a separate Vercel project (`oss-health-dashboard`, Root Directory `frontend`).
+- Removed: the Cloud Run deploy workflow, the Dockerfile and the deploy script.
+- Migrations now run in their own `migrate.yml` workflow, independent of the deployments.
+
+**Alternatives.**
+- Cloud Run: needs billing approval.
+- Vercel Services in a single project: possible, but two projects keep the dashboard deployable
+  independently and match the requested layout.
+- Serving the SPA from FastAPI: couples the two releases.
+
+**Consequences.**
+- No Google Cloud resources and no billing exposure.
+- Cold starts on the serverless function; rate limiting is per instance only (documented in SECURITY.md).
+- Connection pools are kept to 1 + 1 per instance.
+- The API's in-memory rate limiter uses Vercel's `x-vercel-forwarded-for`.

@@ -5,13 +5,13 @@ pipeline extracts public GitHub repository, issue and pull-request data, validat
 loads it idempotently into PostgreSQL, and records every run and its data-quality checks. A public,
 read-only FastAPI service and a responsive React dashboard present the results.
 
-> **Deployment status:** the application is implemented and tested locally (see
-> [docs/DEVELOPMENT_LOG.md](docs/DEVELOPMENT_LOG.md)). **It is not deployed yet.** Publishing to
-> GitHub, Neon, Google Cloud Run and Vercel needs account and billing actions by the owner, listed in
-> [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#owner-actions-required). This README will carry the
-> public link only after the hosted site has been verified.
+**Live dashboard:** https://oss-health-dashboard-one.vercel.app
+**Public read-only API:** https://oss-health-api.vercel.app (interactive docs at
+[`/docs`](https://oss-health-api.vercel.app/docs))
 
-**Public website:** _not yet deployed_
+Both run on Vercel (Hobby) and read from Neon PostgreSQL (Free). Data is refreshed by GitHub
+Actions, so nothing depends on a personal computer being on. Verification results, including phone,
+tablet and desktop viewports, are recorded in [docs/DEVELOPMENT_LOG.md](docs/DEVELOPMENT_LOG.md).
 
 ---
 
@@ -20,7 +20,7 @@ read-only FastAPI service and a responsive React dashboard present the results.
 ```mermaid
 flowchart TB
     V["Visitors (any browser, any device)"] -->|HTTPS| FE["Vercel<br/>React + TypeScript + Vite dashboard"]
-    FE -->|"HTTPS, GET only"| API["Google Cloud Run<br/>FastAPI read-only API<br/>(role: oss_health_reader)"]
+    FE -->|"HTTPS, GET only"| API["Vercel Function (sin1)<br/>FastAPI read-only API<br/>(role: oss_health_reader)"]
     API -->|TLS| DB[("Neon PostgreSQL<br/>oss_health schema + analytics views")]
     GHA["GitHub Actions<br/>daily 02:17 UTC + manual"] -->|"TLS, role: oss_health_app"| DB
     GHA -->|"REST API v2022-11-28"| GH[("GitHub REST API")]
@@ -40,10 +40,10 @@ flowchart TB
 |-------|------------|
 | Pipeline | Python 3.12, requests, pandas, NumPy, Pandera, SQLAlchemy 2 Core, psycopg 3, Alembic |
 | Database | PostgreSQL 17 (Neon in production; CI uses a `postgres:17` service container) |
-| API | FastAPI + Uvicorn in a container on Google Cloud Run |
+| API | FastAPI as a Vercel Function (Python 3.12, region `sin1` next to Neon Singapore) |
 | Frontend | React 18, TypeScript, Vite, Recharts, React Router; hosted on Vercel |
 | Quality | pytest + pytest-cov, `responses` (HTTP mocking), Vitest + Testing Library, Ruff, pip-audit, npm audit, Gitleaks |
-| Automation | GitHub Actions: CI, scheduled/manual ingestion, migrate-then-deploy |
+| Automation | GitHub Actions: CI, scheduled/manual ingestion, database migrations |
 | Optional BI | Power BI Desktop (Import mode) over the `analytics` views |
 
 ## What the data covers, and its limits
@@ -83,15 +83,16 @@ GitHub or the listed projects.
 ## Repository layout
 
 ```text
-backend/            Python package `oss_health` (pipeline + API), Alembic migrations, tests, Dockerfile
+backend/            Python package `oss_health` (pipeline + API), migrations, tests; Vercel project root
+  index.py, vercel.json  Vercel Function entrypoint (re-exports oss_health.api.app:app) and settings
   config/pipeline.toml   repositories, history window, retries, thresholds
   src/oss_health/        cli, pipeline (run_pipeline), github/, transform, validation, load,
                          tracking, report, api/, sql/ (analytics views, grants), migrate
   src/oss_health/migrations/  0001 ops tables · 0002 source tables · 0003 views + grants (packaged)
   tests/                 unit/ (no network, no DB) · integration/ (dedicated *_test DB only)
-frontend/           React + TypeScript + Vite dashboard, Vitest tests, vercel.json
-scripts/            setup, local_postgres, run_pipeline, test, verify, deploy_cloud_run (PowerShell)
-.github/workflows/  ci.yml · ingest.yml · deploy-cloud-run.yml
+frontend/           React + TypeScript + Vite dashboard, Vitest tests; Vercel project root (vercel.json)
+scripts/            setup, local_postgres, run_pipeline, test, verify (PowerShell)
+.github/workflows/  ci.yml · ingest.yml · migrate.yml
 docs/               specifications, deployment, security, run & verify guide, development log
 ```
 
@@ -168,12 +169,14 @@ See [docs/SECURITY.md](docs/SECURITY.md).
 | `GITHUB_TOKEN` | pipeline | Optional. In Actions: secret `GH_API_TOKEN`, or the built-in job token. |
 | `PIPELINE_DATABASE_URL` | pipeline | Role `oss_health_app` (write source/ops tables only) |
 | `MIGRATION_DATABASE_URL` | `db upgrade`, `db bootstrap-roles` | Schema-owner credential |
-| `API_DATABASE_URL` | API | Role `oss_health_reader` (`analytics` views only); Secret Manager in Cloud Run |
-| `CORS_ALLOWED_ORIGINS` | API | Exact dashboard origin(s) |
-| `VITE_API_BASE_URL` | frontend build | **Public.** The Cloud Run URL only; never a secret. |
+| `API_DATABASE_URL` | API | Role `oss_health_reader` (`analytics` views only); a sensitive Vercel env var on `oss-health-api` |
+| `CORS_ALLOWED_ORIGINS` | API | Exact dashboard origin (`https://oss-health-dashboard-one.vercel.app`) |
+| `VITE_API_BASE_URL` | frontend build | **Public.** The API URL only (`https://oss-health-api.vercel.app`); never a secret. |
 
-Real values live in a git-ignored `.env` locally, in GitHub environment secrets, and in Google Secret
-Manager. Never put them in the repository or in `VITE_*` variables. See [.env.example](.env.example).
+Real values live in git-ignored env files locally, in GitHub repository secrets
+(`MIGRATION_DATABASE_URL`, `PIPELINE_DATABASE_URL`), and in Vercel's encrypted project environment
+variables (`API_DATABASE_URL`). Never put them in the repository or in `VITE_*` variables. See
+[.env.example](.env.example).
 
 ## Optional: Power BI
 
@@ -183,13 +186,18 @@ included, and visitors never need Power BI.
 
 ## Hosting and costs
 
-The planned hosting is Vercel Hobby ($0), Neon Free (no card required), GitHub Actions (free for
-public repositories on standard runners), and Google Cloud Run in `asia-southeast1` (Singapore,
-next to Neon `aws-ap-southeast-1`).
+| Piece | Provider and plan | Cost |
+|-------|-------------------|------|
+| Dashboard (`oss-health-dashboard`) | Vercel Hobby, static SPA | $0 |
+| API (`oss-health-api`) | Vercel Hobby, Python Function in `sin1` | $0 |
+| Database | Neon Free, `aws-ap-southeast-1` | $0, no card |
+| CI, ingestion, migrations | GitHub Actions, public repository | $0 on standard runners |
 
-**Google Cloud requires a billing account even for the Always Free tier.** Free tiers are not a hard
-spending cap. Details, figures checked against official pages on 2026-10-28, and the exact approval
-items are in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+Hobby has no billing cycle. When an included limit is exceeded (for example 1M function
+invocations, 4 active-CPU hours or 100 GB transfer per month), usage is **paused rather than
+billed**. Hobby is for personal, non-commercial use. No paid product, add-on or domain is used, and
+no Google Cloud resources exist. Limits were checked on the official pages on 2026-10-28/29; see
+[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ## Troubleshooting
 

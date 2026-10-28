@@ -1,7 +1,0 @@
-# Only pyproject.toml and src/ are needed to build the API image.
-*
-!pyproject.toml
-!src/
-src/**/__pycache__/
-src/**/*.pyc
-src/**/*.egg-info/

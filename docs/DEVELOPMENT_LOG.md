@@ -7,6 +7,58 @@ root, using only the project `.venv` (Python 3.12.10) and Node 24.19 / npm 11.17
 
 Design documents created (PRD, TRD, schema, data flow, Power BI spec, plan, decisions).
 
+## 2026-10-29 — Public deployment on Vercel Hobby (no Google Cloud)
+
+- **Decision:** the owner approved no charges, so the API moved from the planned Cloud Run to a
+  Vercel Function (ADR-027). No Google Cloud resources were ever created. The Cloud Run workflow,
+  the Dockerfile and the deploy script were removed, and a standalone `migrate.yml` was added.
+- **Plan check (official docs):** Hobby is free with no billing cycle. Exceeding included usage
+  pauses the feature. 1M invocations, 4 active-CPU h, 360 GB-h memory and 100 GB transfer per
+  month; personal, non-commercial use. No paid action was needed or taken.
+- **Backend:**
+  - Added `backend/index.py`, which re-exports `oss_health.api.app:app`.
+  - FastAPI moved to core dependencies, the only ones Vercel installs.
+  - `backend/vercel.json`: framework `fastapi`, region `sin1`, `maxDuration` 30, `excludeFiles`.
+  - Added `.vercelignore`.
+  - The rate limiter now keys on `x-vercel-forwarded-for`.
+  - Verified locally with only the core dependencies installed (no pandas, Pandera, Alembic or
+    uvicorn): `/health/live` 200, `/health/ready` 503 without a DB, POST 405.
+  - The first deploy failed ("pattern index.py doesn't match any Serverless Functions inside api");
+    fixed by declaring `"framework": "fastapi"`.
+- **Vercel projects:** `oss-health-api` and `oss-health-dashboard` were created via CLI under
+  `parammeet-projects`. The existing `conservation-geography-quiz` project was not touched.
+  - Root Directories were set to `backend` / `frontend` (and the Vite preset) via `vercel api`.
+  - Env vars were piped on stdin:
+    - `API_DATABASE_URL`: the reader role, validated first; **sensitive**.
+    - `CORS_ALLOWED_ORIGINS`, `DB_POOL_SIZE=1`, `DB_MAX_OVERFLOW=1`, `RATE_LIMIT_PER_MINUTE`,
+      `STALE_AFTER_HOURS`.
+    - `VITE_API_BASE_URL` (frontend, public).
+  - The writer and owner credentials are not in Vercel.
+- **Live verification (2026-10-28 ~20:40–20:55 UTC, from an external network):**
+  - **API (`https://oss-health-api.vercel.app`):**
+    - `/health/live` 200; `/health/ready` `{"status":"ok","database":"ok"}`.
+    - All data endpoints 200: 5 repositories, freshness `fresh`; about 0.7–1.9 s per request.
+    - POST and DELETE → 405; `/api/v1/pipeline/run` → 404; `limit=5000` → 422; a > 730-day
+      range → 422; a 2 KB query → 414; unknown path → `{"error":"not_found"}`.
+    - No credential markers in responses.
+  - **CORS:** a preflight from the dashboard origin returned 200 with `allow-origin` set to the
+    dashboard; one from `https://evil.example.com` returned 400 with no allow-origin.
+  - **Dashboard (`https://oss-health-dashboard-one.vercel.app`), headless Chromium:**
+    - All 6 pages at 390×844, 820×1180 and 1440×900 (**emulated viewports, not physical devices**):
+      HTTP 200, 0 px horizontal overflow, no console or page errors.
+    - A deep link loaded directly worked (`/repositories/41881900` → microsoft/vscode), and an
+      unknown route showed "Page not found".
+    - The browser contacted only the dashboard and API origins.
+    - KPIs rendered real data: 471.5K stars, 22,632 open issues, merge rate 75.9%.
+  - **Deployed assets** (15 files fetched from the live site): no database URLs, tokens, Neon host
+    or password, OIDC token, server variable names or localhost API URL. The API URL is embedded;
+    CSP `connect-src` allows only the API origin; HSTS, X-Frame-Options and nosniff are present.
+  - **Live data refresh:** a manual **Ingest GitHub data** run (`psf/requests`, run 40767015420)
+    succeeded in GitHub Actions. The public API immediately reported run `454030ab…`, and
+    freshness stayed `fresh`, with no redeploy.
+- **Tests:** backend 196 passed (94% coverage); frontend 25 passed; type check, production build
+  and bundle scan clean.
+
 ## 2026-10-29 — Fix: migration URL "could not be parsed" in GitHub Actions
 
 - After `b6c19d1`, the migrate job reached URL parsing and failed with exit 3

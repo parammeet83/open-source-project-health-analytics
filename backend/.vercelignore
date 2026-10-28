@@ -1,0 +1,12 @@
+# Never uploaded to Vercel: local artifacts, tests, caches and any env files.
+.env*
+reports/
+logs/
+tests/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+**/__pycache__/
+*.egg-info/
+.coverage

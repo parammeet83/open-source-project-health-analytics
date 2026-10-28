@@ -83,7 +83,7 @@ Run after each production deploy, then record the results in `docs/DEVELOPMENT_L
 | # | Check | How |
 |---|-------|-----|
 | 1 | Dashboard loads without sign-in | Open the Vercel URL in a private window |
-| 2 | Dashboard calls the Cloud Run API, not localhost | DevTools → Network: requests go to `https://…run.app/api/v1/…` |
+| 2 | Dashboard calls the deployed API, not localhost | DevTools → Network: requests go to `https://oss-health-api.vercel.app/api/v1/…` |
 | 3 | API is public and read-only | `curl -s $API/health/ready`; `curl -s -o /dev/null -w '%{http_code}' -X POST $API/api/v1/runs` → 405 |
 | 4 | API reaches Neon as the reader | `/health/ready` → `{"status":"ok","database":"ok"}` |
 | 5 | Invalid/oversized requests rejected | `$API/api/v1/repositories?limit=5000` → 422; long query string → 414 |

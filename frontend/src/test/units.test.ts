@@ -44,7 +44,7 @@ describe("format", () => {
 
 describe("config", () => {
   it("requires https and a non-local host in production", () => {
-    expect(resolveApiConfig("https://api-xyz.a.run.app/", true)).toEqual({ baseUrl: "https://api-xyz.a.run.app", error: null });
+    expect(resolveApiConfig("https://api-xyz.vercel.app/", true)).toEqual({ baseUrl: "https://api-xyz.vercel.app", error: null });
     expect(resolveApiConfig("http://api.example.com", true).error).toMatch(/HTTPS/);
     expect(resolveApiConfig("https://localhost:8000", true).error).toMatch(/localhost/);
     expect(resolveApiConfig("", true).error).toMatch(/VITE_API_BASE_URL/);

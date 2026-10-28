@@ -1,0 +1,17 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "fastapi",
+  "regions": ["sin1"],
+  "functions": {
+    "index.py": {
+      "maxDuration": 30,
+      "excludeFiles": "{tests/**,config/**,reports/**,logs/**,**/__pycache__/**,**/*.egg-info/**,alembic.ini,README*}"
+    }
+  },
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [{ "key": "Strict-Transport-Security", "value": "max-age=63072000" }]
+    }
+  ]
+}

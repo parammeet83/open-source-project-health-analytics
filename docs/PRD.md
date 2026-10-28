@@ -11,7 +11,8 @@ The original design was a local pipeline, with Windows Task Scheduler and Power 
 outputs. The approved final architecture supersedes those assumptions:
 
 - a **public website** (React/Vite on Vercel),
-- a **read-only API** (FastAPI on Google Cloud Run),
+- a **read-only API** (FastAPI, hosted as a Vercel Function; originally planned for Google Cloud
+  Run, replaced to avoid any billing requirement, see ADR-027),
 - **Neon PostgreSQL** as the hosted database,
 - **GitHub Actions** for CI and daily/manual ingestion,
 - **Power BI** as an optional supplement.
@@ -72,7 +73,7 @@ own data quality honestly.
 | ID | Requirement | Implemented in |
 |----|-------------|----------------|
 | FR-01 | Repositories, window, overlap, page cap, timeouts, retries, rate-limit waits and thresholds are configurable without code changes | `backend/config/pipeline.toml`, `config.py` |
-| FR-02 | Secrets only from environment / `.env` / GitHub secrets / Secret Manager; never logged, reported or bundled | `redaction.py`, `check-dist.mjs`, workflows |
+| FR-02 | Secrets only from environment / git-ignored env files / GitHub secrets / Vercel encrypted env vars; never logged, reported or bundled | `redaction.py`, `check-dist.mjs`, workflows |
 | FR-03 | Invalid configuration stops before extraction with exit 3 | `config.py`, `pipeline.py` |
 | FR-10 | REST API with Link pagination, timeouts, bounded retries + jitter, primary/secondary rate limits, `Retry-After` | `github/client.py` |
 | FR-11 | Extract metadata (and snapshot), issues and PRs | `github/extract.py` |
@@ -122,7 +123,7 @@ All dates are UTC. Weeks start on Monday.
 
 ## 8. Acceptance criteria
 
-| ID | Criterion | Status (2026-10-28) |
+| ID | Criterion | Status (2026-10-29) |
 |----|-----------|---------------------|
 | AC-01 | Unchanged rerun: same row counts, no `etl_updated_at` change | **Verified** (integration test; live rerun of psf/requests: 0 inserted, 0 updated) |
 | AC-02 | No `(repository_id, number)` in both issues and PRs; overlap check detects injected duplicates | **Verified** (integration tests) |
@@ -136,10 +137,10 @@ All dates are UTC. Weeks start on Monday.
 | AC-10 | Quality report on every run, including failures | **Verified** |
 | AC-11 | No secrets in logs, reports, database or bundle | **Verified** (redaction tests, bundle scan, gitleaks) |
 | AC-12 | Alembic upgrade → downgrade → upgrade | **Verified** (local PostgreSQL 16.2; CI targets PostgreSQL 17) |
-| AC-13 | CI runs lint, audits, tests (≥ 85% coverage), image build, frontend checks, secret scan | Workflow written; **not yet run** (repository not published) |
+| AC-13 | CI runs lint, audits, tests (≥ 85% coverage), API entrypoint smoke test, frontend checks, secret scan | **Verified** (GitHub Actions green on `main`) |
 | AC-14 | Adding a repository needs only a config change | **Verified** (config-driven; `--repo` override tested) |
-| AC-15 | Public site works on phone and desktop | Local viewport screenshots verified; **live site not yet deployed** |
-| AC-16 | Daily cloud ingestion with the laptop off | Workflow written; **pending deployment** |
+| AC-15 | Public site works on phone and desktop | **Verified** on the live URL in 390/820/1440 px browser viewports (emulated, not physical devices) |
+| AC-16 | Cloud ingestion with the laptop off | **Verified** for manual GitHub Actions runs (data visible through the public API). The first scheduled run is pending. |
 | AC-17 | Least-privilege roles enforced | **Verified** (integration tests + `db verify-roles`) |
 | AC-18 | No anonymous write/admin endpoint | **Verified** (unit tests; local live probe POST → 405) |
 
@@ -148,8 +149,8 @@ All dates are UTC. Weeks start on Monday.
 - A token is optional. Unit tests and `check-config` need none. Cloud ingestion uses `GH_API_TOKEN`
   if set, otherwise the job's built-in token (about 1,000 requests/hour for read-only REST calls on
   public data).
-- Neon Free, Vercel Hobby and GitHub Actions on a public repository cost nothing. Google Cloud Run
-  needs a billing-enabled project even within Always Free. That approval belongs to the owner.
+- Neon Free, Vercel Hobby and GitHub Actions on a public repository cost nothing. Vercel Hobby
+  pauses rather than bills when included usage is exceeded. No Google Cloud resources are used.
 
 ## 10. Risks
 

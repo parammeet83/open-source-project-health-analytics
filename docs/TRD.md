@@ -10,15 +10,14 @@ flowchart LR
     subgraph GitHubActions["GitHub Actions"]
         CI["ci.yml"]
         ING["ingest.yml<br/>02:17 UTC + manual"]
-        DEP["deploy-cloud-run.yml<br/>migrate → build → deploy → smoke"]
+        MIG["migrate.yml<br/>check-url → upgrade → verify-roles"]
     end
     ING -->|"oss-health run → run_pipeline()"| GH[("GitHub REST API")]
-    ING -->|"oss_health_app (TLS)"| NEON[("Neon PostgreSQL 17")]
-    DEP -->|"owner credential: alembic upgrade"| NEON
-    DEP -->|"OIDC → WIF → deployer SA"| CR["Cloud Run: oss-health-api"]
-    CR -->|"oss_health_reader, read-only sessions"| NEON
-    VER["Vercel: React SPA"] -->|"HTTPS GET /api/v1/*"| CR
-    USER["Browser"] --> VER
+    ING -->|"oss_health_app (TLS)"| NEON[("Neon PostgreSQL 17<br/>aws-ap-southeast-1")]
+    MIG -->|"owner credential: alembic upgrade"| NEON
+    API["Vercel Function (sin1)<br/>oss-health-api: backend/index.py"] -->|"oss_health_reader, read-only sessions"| NEON
+    VER["Vercel CDN<br/>oss-health-dashboard: React SPA"] -.->|"serves static assets"| USER["Browser"]
+    USER -->|"HTTPS GET /api/v1/* (CORS)"| API
 ```
 
 ## 2. Code structure (`backend/src/oss_health`)
@@ -189,7 +188,7 @@ redacted. Fields:
 In GitHub Actions the report is summarized in the job summary and kept as a 30-day artifact. The
 database is the long-term record.
 
-## 9. API (FastAPI on Cloud Run)
+## 9. API (FastAPI as a Vercel Function)
 
 | Endpoint | Parameters (validated) |
 |----------|------------------------|
@@ -205,11 +204,18 @@ database is the long-term record.
 | `GET /api/v1/runs` | `limit` 1–100 (20) |
 | `GET /api/v1/quality/latest` | — |
 
-Freshness values: `fresh`, `degraded`, `stale` (> 36 h), `no_successful_run`. The container
-(`backend/Dockerfile`) is a two-stage `python:3.12-slim` build installing only `.[api]`, running as
-non-root UID 10001 with `uvicorn --host 0.0.0.0 --port $PORT`.
+Freshness values: `fresh`, `degraded`, `stale` (> 36 h), `no_successful_run`.
 
-**Cloud Run settings:** 1 vCPU, 512 MiB, concurrency 40, 0–3 instances, 30 s timeout, CPU throttling.
+**Hosting:** Vercel project `oss-health-api` with Root Directory `backend`.
+- The entrypoint is `backend/index.py` (Vercel auto-discovers `index.py` with an `app` object). It
+  puts `src/` on `sys.path` and re-exports `oss_health.api.app:app`.
+- Vercel installs only `[project.dependencies]` from `pyproject.toml` (SQLAlchemy, psycopg 3,
+  FastAPI), on Python 3.12. Uvicorn is an optional extra for local runs.
+- `backend/vercel.json`: `framework: fastapi`, `regions: ["sin1"]` (Neon is in Singapore),
+  `maxDuration: 30`, and `excludeFiles` for tests, config, reports and logs.
+- Production env: `API_DATABASE_URL` (reader, sensitive), `CORS_ALLOWED_ORIGINS`,
+  `DB_POOL_SIZE=1`, `DB_MAX_OVERFLOW=1`.
+- The CI job `api-entrypoint` installs exactly the core dependencies and smoke-tests `index.py`.
 
 ## 10. Frontend
 

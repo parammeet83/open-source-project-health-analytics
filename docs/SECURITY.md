@@ -5,15 +5,15 @@
 1. **Public means read-only.** Anonymous visitors can only read curated analytics. Ingestion,
    migrations and administration happen only in authenticated GitHub Actions jobs or on the owner's
    machine.
-2. **Least privilege at every boundary.** Three database credentials and two Google service accounts.
-   Each can do one job.
+2. **Least privilege at every boundary.** Three database credentials, each used by exactly one
+   component: migrations, ingestion, or the public API.
 3. **No secrets in code, bundles, logs, reports or chat.**
 
 ## Database roles
 
 | Role | Used by | Can | Cannot |
 |------|---------|-----|--------|
-| Neon project owner (migration credential) | `oss-health db upgrade`, `db bootstrap-roles`, deploy workflow `migrate` job | Own schemas, run Alembic, create the runtime roles, grant privileges | It is never used by the pipeline or the API |
+| Neon project owner (migration credential) | `oss-health db upgrade`, `db bootstrap-roles`, `migrate.yml` workflow | Own schemas, run Alembic, create the runtime roles, grant privileges | It is never used by the pipeline or the API |
 | `oss_health_app` | Ingestion (`PIPELINE_DATABASE_URL`) | `SELECT/INSERT/UPDATE` on `oss_health` tables; `DELETE` on `rejected_records` only (retention); use sequences; advisory locks | Read `analytics`, delete or truncate data tables, run DDL; connection limit 5 |
 | `oss_health_reader` | API, optional Power BI (`API_DATABASE_URL`) | `SELECT` on the eight `analytics` views | Read `oss_health` tables, write anything, run DDL; sessions default to read-only; 10 s statement timeout; connection limit 10 |
 
@@ -43,22 +43,30 @@ timeout on its sessions.
 - **CORS:** exact origins from `CORS_ALLOWED_ORIGINS`, plus an optional anchored, https-only
   `CORS_ALLOW_ORIGIN_REGEX` for Vercel previews. Credentials are disabled and only GET is allowed.
 - **Headers:** `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,
-  `Referrer-Policy: no-referrer`, and short public caching for API responses.
-- **Abuse protection (honest limits):** a 120-requests/minute fixed-window limiter per client IP.
-  It lives **in the memory of each Cloud Run instance**, so it is *not* a reliable global limit
-  across instances or restarts. Real ceilings come from Cloud Run `--max-instances 3`,
-  `--concurrency 40`, a 30 s request timeout, small DB pools (2 + 1 per instance), the reader
-  connection limit, and statement timeouts. For stronger protection, add Cloud Armor or API Gateway
-  (both paid; not enabled).
+  `Referrer-Policy: no-referrer`, HSTS, and short public caching for API responses. The dashboard
+  is served with a CSP whose `connect-src` allows only `https://oss-health-api.vercel.app`.
+- **Abuse protection (honest limits):**
+  - A 120-requests/minute fixed-window limiter per client IP, taken from Vercel's
+    `x-vercel-forwarded-for`, which clients cannot set.
+  - It lives **in the memory of each Vercel Function instance**, so it is *not* a reliable global
+    limit across instances or cold starts.
+  - Other ceilings: a 30 s function duration, one pooled DB connection (+1 overflow) per instance,
+    the reader role's 10-connection limit, 5–10 s statement timeouts, and Vercel's platform DDoS
+    mitigation.
+  - On the Hobby plan, exhausting included usage pauses the project instead of billing.
+  - Vercel WAF custom rules (3 on Hobby) could add stricter rate limiting; they are not configured.
 
 ## Secrets handling
 
 | Secret | Where it lives | Never in |
 |--------|----------------|----------|
-| `MIGRATION_DATABASE_URL`, `PIPELINE_DATABASE_URL` | Local `.env` (git-ignored); GitHub environment `production` secrets | Repository, logs, reports, `VITE_*` |
-| `API_DATABASE_URL` | Google Secret Manager → Cloud Run `--set-secrets` | Image, env-var files in the repository, frontend |
-| `GH_API_TOKEN` (optional) | GitHub environment secret | Anywhere else; the built-in job token is the default |
-| Google credentials | None stored: GitHub OIDC → Workload Identity Federation, restricted to this repository's `main` branch | No JSON keys exist |
+| `MIGRATION_DATABASE_URL`, `PIPELINE_DATABASE_URL` | Local `.env.local` / `.env.roles` (git-ignored); GitHub repository secrets | Repository, logs, reports, Vercel, `VITE_*` |
+| `API_DATABASE_URL` | Vercel `oss-health-api` Production env (encrypted, *sensitive*: not readable back) | Repository, frontend project, GitHub |
+| `GH_API_TOKEN` (optional) | GitHub repository secret | Anywhere else; the built-in job token is the default |
+| `VERCEL_OIDC_TOKEN` (short-lived) | `backend/.env.local`, `frontend/.env.local`, written by `vercel link` | Git (ignored) and uploads (`.vercelignore`); never bundled (not a `VITE_` variable) |
+
+Secret values are only ever piped on **stdin** (`gh secret set`, `vercel env add`) after passing
+`oss-health db check-url`-style validation. They are never passed as command arguments.
 
 - **Redaction.** `oss_health.redaction` masks GitHub tokens (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`,
   `github_pat_`), `Bearer`/`token` headers, URL passwords and `password=` pairs, plus every
@@ -74,11 +82,13 @@ timeout on its sessions.
 
 ## GitHub Actions hardening
 
-- Workflow-level `permissions: contents: read`. Only the deploy job adds `id-token: write` for OIDC.
-- Production secrets sit in the `production` environment and are used only by `ingest` and `deploy`.
+- Every workflow uses `permissions: contents: read`. No cloud credentials exist in GitHub;
+  deployments are done by Vercel.
+- Database secrets are used only by `ingest.yml` (writer) and `migrate.yml` (owner). Both jobs
+  run in the `production` environment and validate the secret before use.
 - Untrusted inputs (`workflow_dispatch` repository names) go through environment variables and are
   validated against a strict pattern before use.
-- `concurrency` groups prevent overlapping ingestions and deploys. The pipeline also takes a
+- `concurrency` groups prevent overlapping ingestions and migrations. The pipeline also takes a
   PostgreSQL advisory lock that is released automatically if the process dies.
 
 ## Dependency hygiene

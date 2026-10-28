@@ -1,0 +1,53 @@
+name: Migrate database
+
+# Applies Alembic migrations to Neon with the schema-owner credential, then verifies the runtime
+# roles. Independent of the Vercel deployments (frontend and API) and of ingestion.
+#
+# Safe procedure: migrations are additive and idempotent (`upgrade head` is a no-op when current).
+# Run this workflow manually *before* merging code that depends on a new schema. It also runs
+# automatically when migration or view SQL files change on main.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "backend/src/oss_health/migrations/**"
+      - "backend/src/oss_health/sql/**"
+      - ".github/workflows/migrate.yml"
+
+permissions:
+  contents: read
+
+# Never overlap with another migration (ingestion uses its own DB advisory lock).
+concurrency:
+  group: migrate-production
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+      - run: python -m pip install ".[pipeline]"
+      - name: Validate migration URL (secret-safe; prints yes/no flags only)
+        env:
+          MIGRATION_DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
+        run: oss-health db check-url --env MIGRATION_DATABASE_URL
+      - name: Apply migrations (schema owner credential)
+        env:
+          MIGRATION_DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
+        run: oss-health db upgrade
+      - name: Verify runtime role privileges
+        env:
+          MIGRATION_DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
+        run: oss-health db verify-roles

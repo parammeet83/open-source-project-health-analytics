@@ -1,0 +1,6 @@
+# Never uploaded to Vercel: local build output, dependencies and any env files except the example.
+.env*
+!.env.example
+node_modules/
+dist/
+coverage/

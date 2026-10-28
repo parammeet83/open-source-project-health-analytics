@@ -127,6 +127,21 @@ def test_numeric_sums_serialize_as_integers():
     assert _clean(None) is None
 
 
+def test_client_key_prefers_vercel_header_and_ignores_spoofable_entries():
+    from starlette.requests import Request
+
+    from oss_health.api.main import _client_key
+
+    def request(headers: dict[str, str]) -> Request:
+        raw = [(k.lower().encode(), v.encode()) for k, v in headers.items()]
+        return Request({"type": "http", "headers": raw, "client": ("10.0.0.1", 1234)})
+
+    assert _client_key(request({"x-vercel-forwarded-for": "203.0.113.7",
+                                "x-forwarded-for": "1.1.1.1, 203.0.113.7"})) == "203.0.113.7"  # fmt: skip
+    assert _client_key(request({"x-forwarded-for": "6.6.6.6, 198.51.100.2"})) == "198.51.100.2"
+    assert _client_key(request({})) == "10.0.0.1"
+
+
 def test_rate_limiter_window():
     limiter = RateLimiter(per_minute=3)
     assert [limiter.allow("1.2.3.4", now=60.0) for _ in range(4)] == [True, True, True, False]
